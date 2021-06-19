@@ -1,0 +1,134 @@
+---
+author: Arvind Venkatadri
+date: '`r format(Sys.Date())`'
+title: TRIZ Contradictions
+subtitle: ': A Graphical Analysis'
+output:
+  html_document:
+    toc_float: true
+    number_sections: true
+    theme: flatly
+    toc: true
+    code_download: true
+    highlight: tango
+keywords: TRIZ; Contradictions; R; tidygraph
+abstract: A graphical analysis of the TRIZ Contradiction Matrix and the Inventive
+  Principles
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readxl)
+library(tidygraph)
+library(ggraph)
+```
+# Introduction
+
+
+# The 39 Parameters and 40 Inventive Principles
+
+```{r}
+params <- 
+  readxl::read_xls("./TRIZ_Matrix.xls",sheet = "Matrix", range = "B3:B41",col_names = "param") %>% 
+  rowid_to_column(var = "paramNo")
+params
+
+ips <- 
+  readxl::read_xls("./TRIZ_Matrix.xls",sheet = "Matrix", range = "AR4:AS43", c("ipNo", "ip")) %>% 
+  separate(., col = "ip", into = c("ip", NA),sep = ",", remove = TRUE) %>% mutate(ipNo = as.integer(ipNo))
+ips
+
+```
+
+
+# Reading and Data Wrangling in the Contradiction Matrix
+```{r}
+matrix <-
+  read_xls("./TRIZ_Matrix.xls", sheet = "Matrix", range = "C2:AO41") %>%
+  rowid_to_column(var = "improve") %>%
+  pivot_longer(.,
+               cols = -improve,
+               names_to = "not_worsen",
+               values_to = "principles") %>% drop_na() %>%
+  separate(
+    .,
+    col = principles,
+    into = c("ip1", "ip2", "ip3", "ip4"),
+    sep = ","
+  ) %>% mutate(
+    not_worsen = as.integer(not_worsen),
+    ip1 = as.integer(ip1),
+    ip2 = as.integer(ip2),
+    ip3 = as.integer(ip3),
+    ip4 = as.integer(ip4)
+  )
+matrix
+```
+We have the Contradiction Matrix in table form. The first two *columns* are the two Parameters, one which we want to Improve and  the other which we want to Not Worsen. For each of these combinations, the columns to the right give 3-4 Inventive Principles that could apply in this situation.
+
+
+# Keeping the lower triangular part.
+# C-matrix is (almost) symmetric about the main diagonal
+matrix <- matrix %>% arrange(improve, not_worsen)
+
+
+
+
+# Make the matrix long for plotting
+matrix_long <- matrix %>% 
+  pivot_longer(cols = ip1:ip4, 
+               names_to = "names", 
+               values_to = "ip") %>%
+  select(-names) %>% 
+  drop_na(ip) %>% left_join(., ips, by = c("ip" = "ipNo")) %>% 
+  rename(ipName = ip.y)
+matrix_long
+
+```
+There are many ways in which we can plot this matrix. 
+
+1. All Parameters and all Inventive Principles.
+
+2. Take each of the Parameters and see which of the Inventive Principles they are mostly connected to
+
+3. Take each of the Inventive Principles and see which of the Parameters they are connected to.
+
+4. Take the Top 10 most commonly used Inventive Principles and see how many of the Contradictions end with them
+
+4. May be other visualizations...based non-engineering domains for example?
+
+A. All Parameters and all Inventive Principles
+```{r}
+
+matrix_long %>% 
+  rename(from = improve, to = not_worsen) %>% 
+  tbl_graph(nodes = params, edges = .) %>% 
+  ggraph( layout = "nicely") + 
+  geom_edge_link0(alpha = 0.05) + 
+  geom_node_point() + 
+  geom_node_text(aes(label = paramNo), size = 6, color = "red", repel = TRUE)
+```
+
+
+
+
+
+
+B. Parameters to IP mapping
+
+```{r}
+matrix_long %>% 
+  filter(ip == 10) %>% 
+  tbl_graph(nodes = params, edges = .) %>% 
+  ggraph( layout = "nicely") + geom_edge_fan0(alpha = 0.15) + geom_node_point() + geom_node_text(aes(label = paramNo), size = 3, colour = "red",repel = TRUE)
+```
+
+C. IP to Parameter mapping
+
+```{r}
+matrix_long %>% 
+  filter(improve == "1" | not_worsen == "1") %>% 
+  tbl_graph(nodes = params, edges = .) %>% 
+  ggraph( layout = "nicely") + geom_edge_fan0(alpha = 0.15) + geom_node_point() + geom_node_text(aes(label = paramNo), size = 3, colour = "red",repel = TRUE)
+```
